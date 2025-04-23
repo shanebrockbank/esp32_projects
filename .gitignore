@@ -1,0 +1,17 @@
+# Ignore build output
+/build/
+
+# Ignore sdkconfig backup
+/sdkconfig.old
+
+# Ignore hidden files like temporary files or logs
+*.log
+*.tmp
+
+# VS Code specific
+.vscode/
+*.code-workspace
+
+# Python bytecode
+__pycache__/
+*.pyc
