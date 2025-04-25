@@ -11,6 +11,8 @@
 #define GPIO_INPUT_1 23
 #define GPIO_INPUT_PIN_SEL ((1<<GPIO_INPUT_0) | (1<<GPIO_INPUT_1))
 
+#define BUTTON_1_FLAG 0
+
 void GPIO_output_setup(void)
 {
     gpio_config_t io_conf;
@@ -32,7 +34,7 @@ void GPIO_input_setup(void)
 {
     gpio_config_t io_conf;
     //interrupt of rising edge
-    io_conf.intr_type = GPIO_INTR_POSEDGE;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
     //bit mask of the pins
     io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
     //set as input mode    
@@ -40,6 +42,9 @@ void GPIO_input_setup(void)
     //enable pull-up mode
     io_conf.pull_up_en = 1;
     gpio_config(&io_conf);
+
+    //set isr to falling edge because pull up resistor 
+    gpio_set_intr_type(GPIO_INPUT_1, GPIO_INTR_NEGEDGE);
 }
 
 void GPIO_setup(void)
@@ -50,7 +55,23 @@ void GPIO_setup(void)
     
 }
 
+void IRAM_ATTR isr_1(void* arg)
+{
+    printf("ISR_1");
+}
+
+void ISR_setup(void)
+{
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(GPIO_INPUT_1, isr_1, NULL);
+}
+
 void app_main(void)
 {
     GPIO_setup();
+    ISR_setup();
+    while(1)
+    {
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
 }
