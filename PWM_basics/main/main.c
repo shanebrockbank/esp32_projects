@@ -1,84 +1,80 @@
 #include <stdio.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <driver/gpio.h>
-#include <esp_timer.h>
+#include <stdlib.h>
+#include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "driver/gpio.h"
+#include "esp_timer.h"
 
-#define GPIO_OUTPUT_0 18
-#define GPIO_OUTPUT_1 19
-#define GPIO_OUTPUT_PIN_SEL ((1<<GPIO_OUTPUT_0) | (1<<GPIO_OUTPUT_1))
+// Define GPIOs
+#define GPIO_OUTPUT_IO_0    18
+#define GPIO_OUTPUT_IO_1    19
+#define GPIO_INPUT_IO_0     5
+#define GPIO_INPUT_IO_1     23
+#define GPIO_OUTPUT_PIN_SEL ((1ULL<<GPIO_OUTPUT_IO_0) | (1ULL<<GPIO_OUTPUT_IO_1))
+#define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_INPUT_IO_0) | (1ULL<<GPIO_INPUT_IO_1))
+#define ESP_INTR_FLAG_DEFAULT 0
 
-#define GPIO_INPUT_0 5
-#define GPIO_INPUT_1 23
-#define GPIO_INPUT_PIN_SEL ((1<<GPIO_INPUT_0) | (1<<GPIO_INPUT_1))
+static QueueHandle_t gpio_evt_queue = NULL;
 
-volatile bool BUTTON_1_FLAG = false;
-
-void GPIO_output_setup(void)
+// ISR handler
+static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
-    gpio_config_t io_conf;
-    //disable interrupt
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    //set as output mode
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    //bit mask of the pins
-    io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    //configure GPIO with the given settings
-    gpio_config(&io_conf);
+    uint32_t gpio_num = (uint32_t) arg;
+    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 }
 
-void GPIO_input_setup(void)
+// Task that handles button presses
+static void gpio_task_example(void* arg)
 {
-    gpio_config_t io_conf;
-    //interrupt on falling edge
-    io_conf.intr_type = GPIO_INTR_NEGEDGE;
-    //bit mask of the pins
-    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
-    //set as input mode    
-    io_conf.mode = GPIO_MODE_INPUT;
-    //enable pull-up mode
-    io_conf.pull_up_en = 1;
-    gpio_config(&io_conf);
-
-    //set isr to falling edge because pull up resistor 
-    //gpio_set_intr_type(GPIO_INPUT_0, GPIO_INTR_NEGEDGE);
-}
-
-void GPIO_setup(void)
-{
-    printf("Setting up GPIO...\n");
-    GPIO_output_setup();
-    GPIO_input_setup();
-    
-}
-
-static void IRAM_ATTR isr_1(void* arg)
-{
-    BUTTON_1_FLAG = true;
-}
-
-void ISR_setup(void)
-{
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(GPIO_INPUT_1, isr_1, NULL);
+    uint32_t io_num;
+    for(;;) {
+        if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+            int64_t time_now = esp_timer_get_time();
+            printf("GPIO[%ld] intr, val: %d at time: %lld us\n", io_num, gpio_get_level(io_num), time_now);
+            gpio_set_level(GPIO_OUTPUT_IO_0, 1);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+        }
+    }
 }
 
 void app_main(void)
 {
-    GPIO_setup();
-    ISR_setup();
+    gpio_config_t io_conf;
 
-    while(1)
-    {
-        if (BUTTON_1_FLAG)
-        {
-            BUTTON_1_FLAG = false;
-            printf("Button Pressed!\n");
-        }
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+    // Output pins configuration
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
+
+    // Input pins configuration
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
+    io_conf.pull_up_en = 1;
+    gpio_config(&io_conf);
+
+    // Create a queue to handle gpio events from ISR
+    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+
+    // Start gpio task
+    xTaskCreate(gpio_task_example, "gpio_task_example", 2048, NULL, 10, NULL);
+
+    // Install ISR service
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
+    gpio_isr_handler_add(GPIO_INPUT_IO_1, gpio_isr_handler, (void*) GPIO_INPUT_IO_1);
+
+    int cnt = 0;
+    while (1) {
+        printf("cnt: %d\n", cnt++);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        //gpio_set_level(GPIO_OUTPUT_IO_0, cnt % 2);
+        gpio_set_level(GPIO_OUTPUT_IO_1, cnt % 2);
     }
 }
