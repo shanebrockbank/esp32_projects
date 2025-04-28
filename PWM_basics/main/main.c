@@ -6,6 +6,7 @@
 #include "freertos/queue.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "driver/ledc.h"
 
 // Define GPIOs
 #define GPIO_OUTPUT_IO_0    18
@@ -15,6 +16,11 @@
 #define GPIO_OUTPUT_PIN_SEL ((1ULL<<GPIO_OUTPUT_IO_0) | (1ULL<<GPIO_OUTPUT_IO_1))
 #define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_INPUT_IO_0) | (1ULL<<GPIO_INPUT_IO_1))
 #define ESP_INTR_FLAG_DEFAULT 0
+
+#define LEDC_LS_TIMER          LEDC_TIMER_1
+#define LEDC_LS_MODE           LEDC_LOW_SPEED_MODE
+#define LEDC_LS_CH2_GPIO       4
+#define LEDC_LS_CH2_CHANNEL    LEDC_CHANNEL_2
 
 static QueueHandle_t gpio_evt_queue = NULL;
 
@@ -39,6 +45,60 @@ void gpio_setup_input(void)
     io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
     io_conf.pull_up_en = 1;
     gpio_config(&io_conf);
+}
+
+void LEDC_setup(void)
+{
+    // First configure timer
+    ledc_timer_config_t timer_conf = {
+        .speed_mode       = LEDC_LS_MODE,
+        .timer_num        = LEDC_LS_TIMER,
+        .duty_resolution  = LEDC_TIMER_13_BIT, 
+        .freq_hz          = 5000,
+        .clk_cfg          = LEDC_AUTO_CLK
+    };
+    ledc_timer_config(&timer_conf);
+
+    // Then configure channel
+    ledc_channel_config_t LEDC_conf = {
+        .gpio_num       = LEDC_LS_CH2_GPIO,
+        .speed_mode     = LEDC_LS_MODE,
+        .channel        = LEDC_LS_CH2_CHANNEL,
+        .intr_type      = LEDC_INTR_DISABLE, 
+        .timer_sel      = LEDC_LS_TIMER,
+        .duty           = 0,
+        .hpoint         = 0
+    };
+    ledc_channel_config(&LEDC_conf);
+}
+
+void update_LED_duty(int duty)
+{
+    ledc_set_duty(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, duty);
+    ledc_update_duty(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL);
+}
+
+void fade_LED(int cnt)
+{
+    if (cnt % 2){
+        //odd -> fade up
+        int duty = 0;
+        while (duty <= 8000)
+        {
+            update_LED_duty(duty);
+            duty += 250;
+            vTaskDelay(pdMS_TO_TICKS(30));
+        }
+    } else {
+        //even -> fade down
+        int duty = 8000;
+        while (duty >= 0)
+        {
+            update_LED_duty(duty);
+            duty -= 250;
+            vTaskDelay(pdMS_TO_TICKS(30));
+        }
+    }
 }
 
 // ISR handler
@@ -72,8 +132,6 @@ static void gpio_task_example(void* arg)
                 vTaskDelay(100 / portTICK_PERIOD_MS);
                 gpio_set_level(GPIO_OUTPUT_IO_1, 0);
             }
-
-            
         }
     }
 }
@@ -97,10 +155,12 @@ void app_main(void)
     gpio_setup_output();
     gpio_setup_input();
     gpio_setup_interrupts_and_task();
+    LEDC_setup();
 
     int cnt = 0;
     while (1) {
         printf("cnt: %d\n", cnt++);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        //vTaskDelay(1000 / portTICK_PERIOD_MS);
+        fade_LED(cnt);
     }
 }
