@@ -10,7 +10,7 @@
 // Define GPIOs
 #define GPIO_OUTPUT_IO_0    18
 #define GPIO_OUTPUT_IO_1    19
-#define GPIO_INPUT_IO_0     5
+#define GPIO_INPUT_IO_0     22
 #define GPIO_INPUT_IO_1     23
 #define GPIO_OUTPUT_PIN_SEL ((1ULL<<GPIO_OUTPUT_IO_0) | (1ULL<<GPIO_OUTPUT_IO_1))
 #define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_INPUT_IO_0) | (1ULL<<GPIO_INPUT_IO_1))
@@ -41,20 +41,6 @@ void gpio_setup_input(void)
     gpio_config(&io_conf);
 }
 
-static void gpio_setup_interrupts_and_task()
-{
-    // Create queue
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-
-    // Start gpio task
-    xTaskCreate(gpio_task_example, "gpio_task_example", 2048, NULL, 10, NULL);
-
-    // Install ISR service and add handlers
-    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-    gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
-    gpio_isr_handler_add(GPIO_INPUT_IO_1, gpio_isr_handler, (void*) GPIO_INPUT_IO_1);
-}
-
 // ISR handler
 static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
@@ -71,18 +57,45 @@ static void gpio_task_example(void* arg)
             int64_t time_now = esp_timer_get_time();
             printf("GPIO[%ld] intr, val: %d at time: %lld us\n", io_num, gpio_get_level(io_num), time_now);
 
-            //Light LED 0.1s
-            gpio_set_level(GPIO_OUTPUT_IO_0, 1);
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-            gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+            if (io_num == GPIO_INPUT_IO_0)
+            {
+                //Light LED 0.1s
+                gpio_set_level(GPIO_OUTPUT_IO_0, 1);
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+                gpio_set_level(GPIO_OUTPUT_IO_0, 0);
+            }
+
+            if (io_num == GPIO_INPUT_IO_1)
+            {
+                //Light LED 0.1s
+                gpio_set_level(GPIO_OUTPUT_IO_1, 1);
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+                gpio_set_level(GPIO_OUTPUT_IO_1, 0);
+            }
+
+            
         }
     }
+}
+
+static void gpio_setup_interrupts_and_task()
+{
+    // Create queue
+    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+
+    // Start gpio task
+    xTaskCreate(gpio_task_example, "gpio_task_example", 2048, NULL, 10, NULL);
+
+    // Install ISR service and add handlers
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
+    gpio_isr_handler_add(GPIO_INPUT_IO_1, gpio_isr_handler, (void*) GPIO_INPUT_IO_1);
 }
 
 void app_main(void)
 {
     gpio_setup_output();
-    gpio_setup_intput();
+    gpio_setup_input();
     gpio_setup_interrupts_and_task();
 
     int cnt = 0;
