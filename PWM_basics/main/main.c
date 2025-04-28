@@ -70,34 +70,49 @@ void LEDC_setup(void)
         .hpoint         = 0
     };
     ledc_channel_config(&LEDC_conf);
+
+    ledc_fade_func_install(0);
 }
 
-void update_LED_duty(int duty)
-{
-    ledc_set_duty(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, duty);
-    ledc_update_duty(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL);
-}
+// void update_LED_duty(int duty)
+// {
+//     ledc_set_duty(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, duty);
+//     ledc_update_duty(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL);
+// }
 
-void fade_LED(int cnt)
+// void fade_LED(int cnt)
+// {
+//     if (cnt % 2){
+//         //odd -> fade up
+//         int duty = 0;
+//         while (duty <= 8000)
+//         {
+//             update_LED_duty(duty);
+//             duty += 250;
+//             vTaskDelay(pdMS_TO_TICKS(30));
+//         }
+//     } else {
+//         //even -> fade down
+//         int duty = 8000;
+//         while (duty >= 0)
+//         {
+//             update_LED_duty(duty);
+//             duty -= 250;
+//             vTaskDelay(pdMS_TO_TICKS(30));
+//         }
+//     }
+// }
+
+void fade_LED_with_LEDC(int cnt)
 {
     if (cnt % 2){
         //odd -> fade up
-        int duty = 0;
-        while (duty <= 8000)
-        {
-            update_LED_duty(duty);
-            duty += 250;
-            vTaskDelay(pdMS_TO_TICKS(30));
-        }
+        ledc_set_fade_with_time(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, 8000, 1000);
+        ledc_fade_start(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, 0);
     } else {
         //even -> fade down
-        int duty = 8000;
-        while (duty >= 0)
-        {
-            update_LED_duty(duty);
-            duty -= 250;
-            vTaskDelay(pdMS_TO_TICKS(30));
-        }
+        ledc_set_fade_with_time(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, 0, 1000);
+        ledc_fade_start(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, 0);
     }
 }
 
@@ -161,6 +176,6 @@ void app_main(void)
     while (1) {
         printf("cnt: %d\n", cnt++);
         //vTaskDelay(1000 / portTICK_PERIOD_MS);
-        fade_LED(cnt);
+        fade_LED_with_LEDC(cnt);
     }
 }
