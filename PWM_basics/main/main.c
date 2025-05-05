@@ -107,7 +107,7 @@ void fade_LED_with_LEDC(int cnt)
 {
     if (cnt % 2){
         //odd -> fade up
-        ledc_set_fade_with_time(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, 8000, 1000);
+        ledc_set_fade_with_time(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, 4000, 1000);
         ledc_fade_start(LEDC_LS_MODE, LEDC_LS_CH2_CHANNEL, 0);
     } else {
         //even -> fade down
@@ -129,6 +129,15 @@ static void gpio_task_example(void* arg)
     uint32_t io_num;
     for(;;) {
         if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+
+            //Debounce
+            gpio_isr_handler_remove(io_num);
+            do
+            {
+                vTaskDelay(20 / portTICK_PERIOD_MS);
+            } while (gpio_get_level(io_num) == 0);
+            
+
             int64_t time_now = esp_timer_get_time();
             printf("GPIO[%ld] intr, val: %d at time: %lld us\n", io_num, gpio_get_level(io_num), time_now);
 
@@ -147,6 +156,8 @@ static void gpio_task_example(void* arg)
                 vTaskDelay(100 / portTICK_PERIOD_MS);
                 gpio_set_level(GPIO_OUTPUT_IO_1, 0);
             }
+
+            gpio_isr_handler_add(io_num, gpio_isr_handler, (void *)io_num);
         }
     }
 }
